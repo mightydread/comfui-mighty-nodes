@@ -15,16 +15,21 @@ required  = {'dynamicprompts'}
 
 installed = {pkg.key for pkg in pkg_resources.working_set}
 missing   = required - installed
-if missing:
-    python = sys.executable
-    subprocess.check_call([python, '-m', 'pip', 'install', *missing], stdout=subprocess.DEVNULL)
 
-import dynamicprompts
+try:
+    from dynamicprompts.generators import RandomPromptGenerator
+    from dynamicprompts.wildcards.wildcard_manager import WildcardManager
+except ImportError:
+    try:
+        python = sys.executable
+        subprocess.check_call([python, '-m', 'pip', 'install', *missing], stdout=subprocess.DEVNULL)
+    except Exception as install_error:
+        print(f"Error installing required packages: {install_error}")
+        sys.exit(1)
+
+
 from pathlib import Path
-from dynamicprompts.generators import RandomPromptGenerator
-from dynamicprompts.wildcards.wildcard_manager import WildcardManager
-
-
+ 
 wm = WildcardManager(Path(os.path.join(os.path.dirname(__file__), "..", "..", "wildcards")))
 generator = RandomPromptGenerator(wildcard_manager=wm)
 #------ Lora
@@ -48,30 +53,37 @@ class Text_LoRA_Stacker:
     CATEGORY = "mightydread/stackers"
 
     def lora_stacker(self, text, lora_stack=None):
-        lora_text = self.process_text(text)[1]
-        leftover_text = self.process_text(text)[0]
-        available_loras = self.available_loras()
-        self.update_current_lora_items_with_new_items(self.items_from_lora_text_with_available_loras(lora_text, available_loras))
+        try:
+            lora_text = self.process_text(text)[1]
+            leftover_text = self.process_text(text)[0]
+            available_loras = self.available_loras()
+            self.update_current_lora_items_with_new_items(
+                self.items_from_lora_text_with_available_loras(lora_text, available_loras)
+            )
+            lora_count = 0
+            if len(self.lora_items) > 0:
+                for item in self.lora_items:
+                    if item.lora_name in available_loras:
+                        print(item.lora_name)
+                        # result = item.apply_lora(result[0], result[1])
+                    else:
+                        raise ValueError(f"Unable to find lora with name '{item.lora_name}'")
 
-        if len(self.lora_items) > 0:
-            for item in self.lora_items:
-                if item.lora_name in available_loras:
-                    print(item.lora_name)
-                    # result = item.apply_lora(result[0], result[1])
-                else:
-                    raise ValueError(f"Unable to find lora with name '{item.lora_name}'")
+                loras = [self.lora_items[i].lora_name for i in range(0, len(self.lora_items))]
+                model_strs = [self.lora_items[i].strength_model for i in range(0, len(self.lora_items))]
+                clip_strs = [self.lora_items[i].strength_clip for i in range(0, len(self.lora_items))]
+                loras = [(lora_name, model_str, clip_str) for lora_name, model_str, clip_str in zip(loras, model_strs, clip_strs) if lora_name != "None"]
+                print(loras)
+            # If lora_stack is not None, extend the loras list with lora_stack
+            if lora_stack is not None:
+                loras.extend([l for l in lora_stack if l[0] != "None"])
+                print(loras)
 
-            loras = [self.lora_items[i].lora_name for i in range(1, len(self.lora_items))]
-            model_strs = [self.lora_items[i].strength_model for i in range(1, len(self.lora_items))]
-            clip_strs = [self.lora_items[i].strength_clip for i in range(1, len(self.lora_items))]
-            loras = [(lora_name, model_str, clip_str) for lora_name, model_str, clip_str in
-                     zip(loras, model_strs, clip_strs) if lora_name != "None"]
+            return (loras, leftover_text, )
 
-        # If lora_stack is not None, extend the loras list with lora_stack
-        if lora_stack is not None:
-            loras.extend([l for l in lora_stack if l[0] != "None"])
+        except Exception as e:
+            raise ValueError(f"Error in Text_LoRA_Stacker: {e}")
 
-        return (loras, leftover_text, )
 
     def process_text(self, text):
         extracted_loras = self.lora_spec_re.findall(text)
@@ -182,14 +194,19 @@ class MightyWildcardInjector:
     FUNCTION = "inject"
 
     CATEGORY = "mightydread/util"
+   
 
     def inject(self, seed, text):
+        try:
+            random.seed(seed)
+            print(f"text : ", text)
+            text = generator.generate(text, 1, seeds=seed)
+            print(f"result : ", text)
+            return (text[0], )
 
-        random.seed(seed)
-        print(f"text : ",text)
-        text=generator.generate(text, 1, seeds=seed)
-        print(f"result : ",text)
-        return (text[0], )
+        except Exception as e:
+            raise ValueError(f"Error in MightyWildcardInjector: {e}")
+
 
 # A dictionary that contains all nodes you want to export with their names
 # NOTE: names should be globally unique

@@ -54,6 +54,7 @@ class Text_LoRA_Stacker:
 
     def lora_stacker(self, text, lora_stack=None):
         try:
+            loras = []
             lora_text = self.process_text(text)[1]
             leftover_text = self.process_text(text)[0]
             available_loras = self.available_loras()
